@@ -214,6 +214,14 @@
   }
   .popup .btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 
+  .popup.admin .greeting { font-size: 1.8rem; margin: 6px 0 14px; }
+  .popup.admin input[type="password"] {
+    width: 100%; padding: 10px 12px; font: inherit; border: 2px solid #d9c7a8; border-radius: 8px; margin-bottom: 12px;
+  }
+  .popup.admin input[type="password"]:focus { outline: none; border-color: var(--red); }
+  .keep { display: flex; gap: 8px; align-items: center; justify-content: center; font-size: .9rem; margin-bottom: 6px; }
+  .admin-msg { min-height: 1.3em; color: var(--red-dark); font-weight: 700; font-size: .9rem; margin: 4px 0 12px; }
+
   .greet-fab {
     position: fixed; right: 18px; bottom: 18px; z-index: 40;
     width: 60px; height: 60px; border-radius: 50%;
@@ -274,7 +282,7 @@
 
           <div class="actions">
             <button class="btn" id="addRow">➕ Add a Friend</button>
-            <button class="btn gold" id="clearAll">🧹 Clear Wishes</button>
+            <button class="btn gold" id="clearAll">🔒 Clear Board</button>
           </div>
           <div class="saved-note" id="savedNote"></div>
         </div>
@@ -296,6 +304,20 @@
       <button class="btn red" id="okPopup">Ho Ho Ho! 🎅</button>
     </div>
   </div>
+</div>
+
+<div class="overlay" id="adminOverlay" role="dialog" aria-modal="true" aria-labelledby="adminTitle">
+  <form class="popup admin" id="adminForm">
+    <span class="emoji">🔒</span>
+    <p class="greeting" id="adminTitle">Clear the Board</p>
+    <input type="password" id="adminPass" placeholder="Admin password" aria-label="Admin password" autocomplete="current-password">
+    <label class="keep"><input type="checkbox" id="keepNames" checked> Keep everyone's names (only wipe wishes)</label>
+    <p class="admin-msg" id="adminMsg"></p>
+    <div class="btns">
+      <button type="button" class="btn" id="adminCancel">Cancel</button>
+      <button type="submit" class="btn red">🧹 Clear It</button>
+    </div>
+  </form>
 </div>
 
 <script>
@@ -353,95 +375,198 @@
     toggle.querySelector("span").textContent = open ? "🎁 Close the Wish List" : "🎁 Open the Wish List";
   };
 
-  /* ---------- Wish list table (saved in this browser) ---------- */
-  const STORAGE_KEY = "secret-santa-wishlist";
+  /* ---------- Wish list table ----------
+     Paste your Google Apps Script web app URL below (see SETUP.md).
+     With it, everyone who opens the page sees and edits the same board.
+     Left empty, the table only saves in each person's own browser. */
+  const SHEET_API_URL = "";
+
   const MIN_ROWS = 5;
+  const POLL_MS = 15000;
   const rowsEl = document.getElementById("rows");
   const savedNote = document.getElementById("savedNote");
+  const shared = !!SHEET_API_URL;
 
-  function load() {
-    try {
-      const data = JSON.parse(localStorage.getItem(STORAGE_KEY));
-      if (Array.isArray(data) && data.length) return data;
-    } catch (e) {}
-    return Array.from({ length: MIN_ROWS }, (_, i) => ({ name: "Friend " + (i + 1), wishes: ["", "", ""] }));
-  }
+  /* --- Storage: Google Sheet (shared) or this browser (fallback) --- */
+  const LOCAL_KEY = "secret-santa-board";
+  const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+  const blankRows = () => Array.from({ length: MIN_ROWS }, () => ({ id: uid(), name: "", wishes: ["", "", ""] }));
 
-  function collect() {
-    return [...rowsEl.querySelectorAll("tr")].map(tr => {
-      const inputs = tr.querySelectorAll("input");
-      return { name: inputs[0].value, wishes: [inputs[1].value, inputs[2].value, inputs[3].value] };
-    });
-  }
-
-  let saveTimer;
-  function save() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(collect()));
-      savedNote.textContent = "✔ Saved to this browser";
-      clearTimeout(saveTimer);
-      saveTimer = setTimeout(() => savedNote.textContent = "", 1500);
-    } catch (e) {}
-  }
-
-  function makeInput(value, placeholder, label) {
-    const input = document.createElement("input");
-    input.type = "text";
-    input.value = value || "";
-    input.placeholder = placeholder;
-    input.setAttribute("aria-label", label);
-    input.addEventListener("input", save);
-    return input;
-  }
-
-  function addRow(person) {
-    const tr = document.createElement("tr");
-    const nameTd = document.createElement("td");
-    nameTd.className = "name-cell";
-    nameTd.appendChild(makeInput(person.name, "Name", "Friend's name"));
-    tr.appendChild(nameTd);
-
-    const placeholders = ["Top wish…", "Second wish…", "Third wish…"];
-    for (let i = 0; i < 3; i++) {
-      const td = document.createElement("td");
-      td.appendChild(makeInput(person.wishes[i], placeholders[i], "Wish " + (i + 1)));
-      tr.appendChild(td);
+  const localStore = {
+    read() {
+      try { const d = JSON.parse(localStorage.getItem(LOCAL_KEY)); if (Array.isArray(d) && d.length) return d; } catch (e) {}
+      return blankRows();
+    },
+    write(rows) { try { localStorage.setItem(LOCAL_KEY, JSON.stringify(rows)); } catch (e) {} return rows; },
+    async call(req) {
+      let rows = this.read();
+      if (req.action === "update") {
+        const r = rows.find(x => x.id === req.id);
+        if (r) { if (req.field === "name") r.name = req.value; else r.wishes[+req.field.slice(4) - 1] = req.value; }
+      } else if (req.action === "add") {
+        rows.push({ id: uid(), name: "", wishes: ["", "", ""] });
+      } else if (req.action === "delete") {
+        rows = rows.filter(x => x.id !== req.id);
+      } else if (req.action === "clear") {
+        rows = req.keepNames ? rows.map(r => ({ ...r, wishes: ["", "", ""] })) : blankRows();
+      }
+      while (rows.length < MIN_ROWS) rows.push({ id: uid(), name: "", wishes: ["", "", ""] });
+      return { ok: true, rows: this.write(rows) };
     }
+  };
+
+  const sheetStore = {
+    async call(req) {
+      const res = req.action === "list"
+        ? await fetch(SHEET_API_URL + "?action=list&t=" + Date.now())
+        : await fetch(SHEET_API_URL, { method: "POST", body: JSON.stringify(req) }); // text/plain: no CORS preflight
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.json();
+    }
+  };
+  const store = shared ? sheetStore : localStore;
+
+  /* --- Status line --- */
+  let noteTimer;
+  function note(msg, sticky) {
+    savedNote.textContent = msg;
+    clearTimeout(noteTimer);
+    if (!sticky) noteTimer = setTimeout(() => savedNote.textContent = shared ? "☁️ Shared board — everyone sees the same list" : "", 2500);
+  }
+
+  async function send(req) {
+    try {
+      const data = await store.call(req);
+      if (!data.ok) return data;
+      render(data.rows);
+      return data;
+    } catch (e) {
+      note("⚠️ Couldn't reach the shared sheet. Check your connection and try again.", true);
+      return { ok: false, error: "network" };
+    }
+  }
+
+  /* --- Rendering (keeps whatever box you're typing in untouched) --- */
+  const FIELDS = ["name", "wish1", "wish2", "wish3"];
+  const PLACEHOLDERS = ["Name", "Top wish…", "Second wish…", "Third wish…"];
+  const LABELS = ["Friend's name", "Wish 1", "Wish 2", "Wish 3"];
+  const pending = new Map(); // "id:field" -> timer, for edits not yet sent
+
+  function buildRow(id) {
+    const tr = document.createElement("tr");
+    tr.dataset.id = id;
+    FIELDS.forEach((field, i) => {
+      const td = document.createElement("td");
+      if (i === 0) td.className = "name-cell";
+      const input = document.createElement("input");
+      input.type = "text";
+      input.maxLength = 200;
+      input.placeholder = PLACEHOLDERS[i];
+      input.setAttribute("aria-label", LABELS[i]);
+      input.dataset.field = field;
+      const key = id + ":" + field;
+      const flush = () => {
+        if (!pending.has(key)) return;
+        clearTimeout(pending.get(key));
+        pending.delete(key);
+        note(shared ? "Saving…" : "✔ Saved to this browser", shared);
+        send({ action: "update", id, field, value: input.value }).then(r => { if (r.ok && shared) note("✔ Saved for everyone"); });
+      };
+      input.addEventListener("input", () => {
+        clearTimeout(pending.get(key));
+        pending.set(key, setTimeout(flush, 800));
+      });
+      input.addEventListener("blur", flush);
+      td.appendChild(input);
+      tr.appendChild(td);
+    });
 
     const rmTd = document.createElement("td");
     const rm = document.createElement("button");
     rm.className = "remove";
     rm.textContent = "🗑️";
-    rm.title = "Remove this friend";
-    rm.onclick = () => {
-      if (rowsEl.children.length <= MIN_ROWS) {
-        savedNote.textContent = "🎄 Keep at least " + MIN_ROWS + " friends on the list!";
-        return;
-      }
-      tr.remove();
-      save();
-    };
+    rm.title = "Remove this friend (admin)";
+    rm.onclick = () => removeRow(id);
     rmTd.appendChild(rm);
     tr.appendChild(rmTd);
-    rowsEl.appendChild(tr);
+    return tr;
   }
 
-  let people = load();
-  while (people.length < MIN_ROWS) people.push({ name: "", wishes: ["", "", ""] });
-  people.forEach(addRow);
-
-  document.getElementById("addRow").onclick = () => {
-    addRow({ name: "Friend " + (rowsEl.children.length + 1), wishes: ["", "", ""] });
-    rowsEl.lastElementChild.querySelector("input").select();
-    save();
-  };
-  document.getElementById("clearAll").onclick = () => {
-    if (!confirm("Clear everyone's wishes? (Names stay.)")) return;
-    rowsEl.querySelectorAll("tr").forEach(tr => {
-      tr.querySelectorAll("td:not(.name-cell) input").forEach(i => i.value = "");
+  function render(rows) {
+    const existing = new Map([...rowsEl.children].map(tr => [tr.dataset.id, tr]));
+    rows.forEach((row, i) => {
+      let tr = existing.get(row.id);
+      if (!tr) tr = buildRow(row.id);
+      existing.delete(row.id);
+      const values = [row.name, ...row.wishes];
+      tr.querySelectorAll("input").forEach((input, j) => {
+        const busy = document.activeElement === input || pending.has(row.id + ":" + input.dataset.field);
+        if (!busy && input.value !== values[j]) input.value = values[j] || "";
+      });
+      if (rowsEl.children[i] !== tr) rowsEl.insertBefore(tr, rowsEl.children[i] || null);
     });
-    save();
+    existing.forEach(tr => tr.remove());
+    requestAnimationFrame(drawLights);
+  }
+
+  async function refresh() {
+    if (shared) await send({ action: "list" });
+    else render(localStore.read());
+  }
+
+  /* --- Buttons --- */
+  document.getElementById("addRow").onclick = async () => {
+    const before = rowsEl.children.length;
+    note(shared ? "Adding…" : "", shared);
+    const r = await send({ action: "add" });
+    if (r.ok) {
+      note(shared ? "✔ Added" : "✔ Added");
+      const tr = rowsEl.children[Math.max(before, rowsEl.children.length - 1)];
+      if (tr) tr.querySelector("input").focus();
+    }
   };
+
+  async function removeRow(id) {
+    if (rowsEl.children.length <= MIN_ROWS) { note("🎄 Keep at least " + MIN_ROWS + " friends on the list!"); return; }
+    const name = rowsEl.querySelector(`tr[data-id="${id}"] input`).value || "this friend";
+    let password = "";
+    if (shared) {
+      password = prompt(`Admin password to remove ${name}:`);
+      if (password === null) return;
+    } else if (!confirm(`Remove ${name}?`)) return;
+    const r = await send({ action: "delete", id, password });
+    note(r.ok ? "✔ Removed" : r.error === "bad_password" ? "🔒 Wrong password" : "⚠️ Couldn't remove");
+  }
+
+  /* --- Admin: clear the board --- */
+  const adminOverlay = document.getElementById("adminOverlay");
+  const adminPass = document.getElementById("adminPass");
+  const adminMsg = document.getElementById("adminMsg");
+  function openAdmin() {
+    adminMsg.textContent = shared ? "" : "Note: the shared sheet isn't connected yet, so this only clears your own browser.";
+    adminPass.value = "";
+    adminOverlay.classList.add("show");
+    setTimeout(() => adminPass.focus(), 50);
+  }
+  const closeAdmin = () => adminOverlay.classList.remove("show");
+  document.getElementById("clearAll").onclick = openAdmin;
+  document.getElementById("adminCancel").onclick = closeAdmin;
+  adminOverlay.addEventListener("click", e => { if (e.target === adminOverlay) closeAdmin(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeAdmin(); });
+  document.getElementById("adminForm").onsubmit = async e => {
+    e.preventDefault();
+    const keepNames = document.getElementById("keepNames").checked;
+    adminMsg.textContent = "Checking…";
+    const r = await send({ action: "clear", password: adminPass.value, keepNames });
+    if (r.ok) { closeAdmin(); note("🧹 Board cleared!"); }
+    else adminMsg.textContent = r.error === "bad_password" ? "🔒 Wrong password — try again." : "⚠️ Couldn't reach the sheet.";
+  };
+
+  /* --- Start --- */
+  note(shared ? "Loading the shared board…" : "", true);
+  refresh().then(() => { if (shared) note("☁️ Shared board — everyone sees the same list", true); });
+  if (shared) setInterval(() => { if (!document.hidden) send({ action: "list" }); }, POLL_MS);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && shared) send({ action: "list" }); });
 
   /* ---------- Ivy border (inline SVG pattern) ---------- */
   const ivySvg = `
