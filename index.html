@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Secret Santa Wish List</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Mountains+of+Christmas:wght@700&family=Nunito:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --night: #0d2a1f;
+    --night-2: #123b2b;
+    --cream: #fff8ec;
+    --red: #c8102e;
+    --red-dark: #8f0b20;
+    --gold: #f4c542;
+    --green: #1f7a3f;
+    --ivy: #2e8b3e;
+    --ivy-dark: #1b5e2a;
+    --text: #2b1d14;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: "Nunito", system-ui, sans-serif;
+    color: var(--text);
+    background: radial-gradient(ellipse at top, var(--night-2), var(--night) 70%);
+    overflow-x: hidden;
+  }
+
+  /* ---------- Falling snow ---------- */
+  .snow { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+  .flake {
+    position: absolute; top: -10px; color: #fff; opacity: .8;
+    animation: fall linear infinite;
+  }
+  @keyframes fall {
+    to { transform: translateY(110vh) translateX(40px) rotate(360deg); }
+  }
+
+  /* ---------- Ivy + lights frame ---------- */
+  .frame {
+    position: relative;
+    z-index: 1;
+    max-width: 960px;
+    margin: 40px auto;
+    padding: 64px 48px;
+  }
+  .ivy {
+    position: absolute; pointer-events: none;
+    background-repeat: repeat;
+  }
+  .ivy.top, .ivy.bottom { left: 0; right: 0; height: 40px; background-size: 80px 40px; }
+  .ivy.left, .ivy.right { top: 0; bottom: 0; width: 40px; background-size: 40px 80px; }
+  .ivy.top { top: 0; }
+  .ivy.bottom { bottom: 0; transform: scaleY(-1); }
+  .ivy.left { left: 0; }
+  .ivy.right { right: 0; transform: scaleX(-1); }
+
+  .lights { position: absolute; inset: 0; pointer-events: none; }
+  .bulb {
+    position: absolute; width: 12px; height: 18px;
+    border-radius: 50% 50% 45% 45%;
+    transform: translate(-50%, -50%);
+    animation: twinkle 1.6s ease-in-out infinite;
+  }
+  .bulb::before { /* little socket cap */
+    content: ""; position: absolute; top: -5px; left: 3px;
+    width: 6px; height: 6px; background: #3a3a3a; border-radius: 2px;
+  }
+  @keyframes twinkle {
+    0%, 100% { opacity: 1; filter: brightness(1.2); }
+    50% { opacity: .35; filter: brightness(.6); box-shadow: none; }
+  }
+
+  /* ---------- Card content ---------- */
+  .card {
+    background: var(--cream);
+    border-radius: 18px;
+    padding: 32px 28px;
+    box-shadow: 0 10px 40px rgba(0,0,0,.45);
+    border: 4px solid var(--red);
+    outline: 3px dashed var(--gold);
+    outline-offset: -12px;
+  }
+
+  h1 {
+    font-family: "Mountains of Christmas", cursive;
+    color: var(--red);
+    text-align: center;
+    font-size: clamp(2.2rem, 6vw, 3.6rem);
+    margin: 0 0 4px;
+    text-shadow: 2px 2px 0 var(--gold);
+  }
+  .subtitle { text-align: center; margin: 0 0 24px; color: var(--green); font-weight: 700; }
+
+  /* ---------- Expandable section ---------- */
+  .toggle {
+    width: 100%;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px;
+    font: 700 1.25rem "Nunito", sans-serif;
+    color: #fff;
+    background: repeating-linear-gradient(45deg, var(--red), var(--red) 18px, var(--red-dark) 18px, var(--red-dark) 36px);
+    border: 3px solid #fff;
+    border-radius: 12px;
+    cursor: pointer;
+    box-shadow: 0 4px 0 var(--red-dark);
+  }
+  .toggle:hover { filter: brightness(1.08); }
+  .toggle .arrow { transition: transform .3s ease; font-size: 1.1rem; }
+  .toggle[aria-expanded="true"] .arrow { transform: rotate(180deg); }
+
+  .panel {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows .45s ease;
+  }
+  .panel.open { grid-template-rows: 1fr; }
+  .panel > .inner { overflow: hidden; }
+  .panel-body { padding-top: 20px; }
+
+  .table-wrap { overflow-x: auto; }
+  table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 2px solid var(--green);
+  }
+  th {
+    background: var(--green);
+    color: #fff;
+    padding: 12px 10px;
+    text-align: left;
+    font-size: .95rem;
+  }
+  td { padding: 8px 10px; border-top: 1px solid #e2d6c2; vertical-align: middle; }
+  tr:nth-child(even) td { background: #fdf0dc; }
+  td.name-cell { width: 22%; }
+
+  input[type="text"] {
+    width: 100%;
+    min-width: 120px;
+    padding: 8px 10px;
+    font: inherit;
+    border: 2px solid #d9c7a8;
+    border-radius: 8px;
+    background: #fff;
+  }
+  input[type="text"]:focus { outline: none; border-color: var(--red); box-shadow: 0 0 0 3px rgba(200,16,46,.2); }
+  .name-cell input { font-weight: 700; color: var(--red-dark); }
+
+  .remove {
+    background: none; border: none; cursor: pointer; font-size: 1.2rem; opacity: .6;
+  }
+  .remove:hover { opacity: 1; }
+
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; justify-content: center; }
+  .btn {
+    padding: 10px 18px;
+    border-radius: 999px;
+    border: none;
+    font: 700 1rem "Nunito", sans-serif;
+    cursor: pointer;
+    color: #fff;
+    background: var(--green);
+    box-shadow: 0 3px 0 var(--ivy-dark);
+  }
+  .btn.red { background: var(--red); box-shadow: 0 3px 0 var(--red-dark); }
+  .btn.gold { background: var(--gold); color: var(--text); box-shadow: 0 3px 0 #b8901f; }
+  .btn:active { transform: translateY(2px); box-shadow: none; }
+  .saved-note { text-align: center; font-size: .85rem; color: var(--green); margin-top: 10px; min-height: 1.2em; }
+
+  /* ---------- Greeting pop-up ---------- */
+  .overlay {
+    position: fixed; inset: 0; z-index: 50;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,.55);
+    opacity: 0; pointer-events: none;
+    transition: opacity .3s ease;
+    padding: 16px;
+  }
+  .overlay.show { opacity: 1; pointer-events: auto; }
+  .popup {
+    position: relative;
+    max-width: 420px; width: 100%;
+    text-align: center;
+    background: var(--cream);
+    border: 5px solid var(--gold);
+    border-radius: 20px;
+    padding: 36px 24px 24px;
+    box-shadow: 0 0 0 6px var(--red), 0 20px 60px rgba(0,0,0,.5);
+    transform: scale(.6) rotate(-6deg);
+    transition: transform .45s cubic-bezier(.2,1.6,.4,1);
+  }
+  .overlay.show .popup { transform: scale(1) rotate(0); }
+  .popup .emoji { font-size: 3rem; display: block; animation: bounce 1.2s ease-in-out infinite; }
+  @keyframes bounce { 50% { transform: translateY(-8px); } }
+  .popup .greeting {
+    font-family: "Mountains of Christmas", cursive;
+    font-size: 2rem;
+    color: var(--red);
+    margin: 10px 0 20px;
+    line-height: 1.2;
+  }
+  .popup .close {
+    position: absolute; top: 8px; right: 12px;
+    background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--red-dark);
+  }
+  .popup .btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+
+  .greet-fab {
+    position: fixed; right: 18px; bottom: 18px; z-index: 40;
+    width: 60px; height: 60px; border-radius: 50%;
+    border: 3px solid var(--gold);
+    background: var(--red);
+    font-size: 1.8rem; cursor: pointer;
+    box-shadow: 0 6px 18px rgba(0,0,0,.4);
+    animation: wiggle 3s ease-in-out infinite;
+  }
+  @keyframes wiggle { 0%, 90%, 100% { transform: rotate(0); } 93% { transform: rotate(-12deg); } 97% { transform: rotate(12deg); } }
+
+  footer { text-align: center; color: #cfe8d6; font-size: .85rem; margin-top: 18px; position: relative; z-index: 1; }
+
+  @media (max-width: 600px) {
+    .frame { margin: 16px auto; padding: 50px 22px; }
+    .card { padding: 22px 14px; }
+    .ivy.top, .ivy.bottom { height: 30px; background-size: 60px 30px; }
+    .ivy.left, .ivy.right { width: 30px; background-size: 30px 60px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="snow" id="snow"></div>
+
+<div class="frame" id="frame">
+  <div class="ivy top"></div>
+  <div class="ivy bottom"></div>
+  <div class="ivy left"></div>
+  <div class="ivy right"></div>
+  <div class="lights" id="lights"></div>
+
+  <main class="card">
+    <h1>🎅 Secret Santa 🎄</h1>
+    <p class="subtitle">Everyone's Top 3 Wish List</p>
+
+    <button class="toggle" id="toggle" aria-expanded="false" aria-controls="panel">
+      <span>🎁 Open the Wish List</span>
+      <span class="arrow">▼</span>
+    </button>
+
+    <div class="panel" id="panel">
+      <div class="inner">
+        <div class="panel-body">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>🥇 Wish #1</th>
+                  <th>🥈 Wish #2</th>
+                  <th>🥉 Wish #3</th>
+                  <th aria-label="Remove"></th>
+                </tr>
+              </thead>
+              <tbody id="rows"></tbody>
+            </table>
+          </div>
+
+          <div class="actions">
+            <button class="btn" id="addRow">➕ Add a Friend</button>
+            <button class="btn gold" id="clearAll">🧹 Clear Wishes</button>
+          </div>
+          <div class="saved-note" id="savedNote"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<footer>Made with ❤️ and a sprinkle of snow</footer>
+
+<button class="greet-fab" id="greetFab" title="Show a holiday greeting">🔔</button>
+
+<div class="overlay" id="overlay" role="dialog" aria-modal="true" aria-labelledby="greeting">
+  <div class="popup">
+    <button class="close" id="closePopup" aria-label="Close">✖</button>
+    <span class="emoji" id="greetEmoji">🎄</span>
+    <p class="greeting" id="greeting">Merry Christmas!</p>
+    <div class="btns">
+      <button class="btn" id="anotherGreeting">✨ Another One</button>
+      <button class="btn red" id="okPopup">Ho Ho Ho! 🎅</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  /* ---------- Greetings ---------- */
+  const greetings = [
+    "Merry Christmas!",
+    "Happy Holidays!",
+    "Season's Greetings!",
+    "Ho Ho Ho! Santa's watching your wish list!",
+    "Wishing you a holly jolly Christmas!",
+    "May your days be merry and bright!",
+    "Peace, love & gingerbread!",
+    "Sleigh it like you mean it!",
+    "Have a cool Yule!",
+    "Warm wishes & cozy cocoa!",
+    "Don't get your tinsel in a tangle!",
+    "Feliz Navidad!",
+    "Joyeux Noël!",
+    "Snow much love to you!",
+    "Eat, drink & be merry!",
+    "Yule be getting something great!",
+    "Have yourself a merry little Christmas!",
+    "Let it snow, let it snow, let it snow!"
+  ];
+  const emojis = ["🎄", "🎅", "⛄", "🦌", "🎁", "🔔", "❄️", "🍪", "🌟", "🧦"];
+  let lastGreeting = -1;
+
+  const overlay = document.getElementById("overlay");
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+
+  function showGreeting() {
+    let i;
+    do { i = Math.floor(Math.random() * greetings.length); } while (i === lastGreeting);
+    lastGreeting = i;
+    document.getElementById("greeting").textContent = greetings[i];
+    document.getElementById("greetEmoji").textContent = pick(emojis);
+    overlay.classList.add("show");
+  }
+  function hideGreeting() { overlay.classList.remove("show"); }
+
+  document.getElementById("greetFab").onclick = showGreeting;
+  document.getElementById("anotherGreeting").onclick = showGreeting;
+  document.getElementById("okPopup").onclick = hideGreeting;
+  document.getElementById("closePopup").onclick = hideGreeting;
+  overlay.addEventListener("click", e => { if (e.target === overlay) hideGreeting(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") hideGreeting(); });
+  setTimeout(showGreeting, 700);
+
+  /* ---------- Expandable section ---------- */
+  const toggle = document.getElementById("toggle");
+  const panel = document.getElementById("panel");
+  toggle.onclick = () => {
+    const open = panel.classList.toggle("open");
+    toggle.setAttribute("aria-expanded", open);
+    toggle.querySelector("span").textContent = open ? "🎁 Close the Wish List" : "🎁 Open the Wish List";
+  };
+
+  /* ---------- Wish list table (saved in this browser) ---------- */
+  const STORAGE_KEY = "secret-santa-wishlist";
+  const MIN_ROWS = 5;
+  const rowsEl = document.getElementById("rows");
+  const savedNote = document.getElementById("savedNote");
+
+  function load() {
+    try {
+      const data = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      if (Array.isArray(data) && data.length) return data;
+    } catch (e) {}
+    return Array.from({ length: MIN_ROWS }, (_, i) => ({ name: "Friend " + (i + 1), wishes: ["", "", ""] }));
+  }
+
+  function collect() {
+    return [...rowsEl.querySelectorAll("tr")].map(tr => {
+      const inputs = tr.querySelectorAll("input");
+      return { name: inputs[0].value, wishes: [inputs[1].value, inputs[2].value, inputs[3].value] };
+    });
+  }
+
+  let saveTimer;
+  function save() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(collect()));
+      savedNote.textContent = "✔ Saved to this browser";
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => savedNote.textContent = "", 1500);
+    } catch (e) {}
+  }
+
+  function makeInput(value, placeholder, label) {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = value || "";
+    input.placeholder = placeholder;
+    input.setAttribute("aria-label", label);
+    input.addEventListener("input", save);
+    return input;
+  }
+
+  function addRow(person) {
+    const tr = document.createElement("tr");
+    const nameTd = document.createElement("td");
+    nameTd.className = "name-cell";
+    nameTd.appendChild(makeInput(person.name, "Name", "Friend's name"));
+    tr.appendChild(nameTd);
+
+    const placeholders = ["Top wish…", "Second wish…", "Third wish…"];
+    for (let i = 0; i < 3; i++) {
+      const td = document.createElement("td");
+      td.appendChild(makeInput(person.wishes[i], placeholders[i], "Wish " + (i + 1)));
+      tr.appendChild(td);
+    }
+
+    const rmTd = document.createElement("td");
+    const rm = document.createElement("button");
+    rm.className = "remove";
+    rm.textContent = "🗑️";
+    rm.title = "Remove this friend";
+    rm.onclick = () => {
+      if (rowsEl.children.length <= MIN_ROWS) {
+        savedNote.textContent = "🎄 Keep at least " + MIN_ROWS + " friends on the list!";
+        return;
+      }
+      tr.remove();
+      save();
+    };
+    rmTd.appendChild(rm);
+    tr.appendChild(rmTd);
+    rowsEl.appendChild(tr);
+  }
+
+  let people = load();
+  while (people.length < MIN_ROWS) people.push({ name: "", wishes: ["", "", ""] });
+  people.forEach(addRow);
+
+  document.getElementById("addRow").onclick = () => {
+    addRow({ name: "Friend " + (rowsEl.children.length + 1), wishes: ["", "", ""] });
+    rowsEl.lastElementChild.querySelector("input").select();
+    save();
+  };
+  document.getElementById("clearAll").onclick = () => {
+    if (!confirm("Clear everyone's wishes? (Names stay.)")) return;
+    rowsEl.querySelectorAll("tr").forEach(tr => {
+      tr.querySelectorAll("td:not(.name-cell) input").forEach(i => i.value = "");
+    });
+    save();
+  };
+
+  /* ---------- Ivy border (inline SVG pattern) ---------- */
+  const ivySvg = `
+    <svg xmlns='http://www.w3.org/2000/svg' width='80' height='40' viewBox='0 0 80 40'>
+      <path d='M0 14 Q20 4 40 14 T80 14' fill='none' stroke='#5a3b1e' stroke-width='2.5'/>
+      <g fill='#2e8b3e' stroke='#1b5e2a' stroke-width='1'>
+        <path d='M12 10 c-6 -2 -8 -8 -4 -10 c2 4 6 4 4 10z'/>
+        <path d='M14 12 c2 8 10 12 14 8 c-4 -2 -6 -8 -14 -8z'/>
+        <path d='M40 14 c-4 6 -2 14 4 16 c0 -6 2 -10 -4 -16z'/>
+        <path d='M52 12 c4 -6 12 -6 14 -2 c-6 0 -8 4 -14 2z'/>
+        <path d='M66 16 c-2 8 4 14 10 12 c-2 -4 -2 -10 -10 -12z'/>
+      </g>
+      <g fill='#4caf50' opacity='.85'>
+        <circle cx='28' cy='9' r='5'/><circle cx='31' cy='12' r='4'/>
+      </g>
+      <g fill='#c8102e'><circle cx='24' cy='22' r='2.6'/><circle cx='28' cy='24' r='2.6'/><circle cx='25' cy='26' r='2.6'/></g>
+    </svg>`;
+  const ivyVert = ivySvg
+    .replace("width='80' height='40' viewBox='0 0 80 40'", "width='40' height='80' viewBox='0 0 40 80'")
+    .replace("<path d='M0 14", "<g transform='translate(40 0) rotate(90)'><path d='M0 14")
+    .replace("</svg>", "</g></svg>");
+  const toUrl = s => `url("data:image/svg+xml,${encodeURIComponent(s.trim())}")`;
+  document.querySelectorAll(".ivy.top, .ivy.bottom").forEach(el => el.style.backgroundImage = toUrl(ivySvg));
+  document.querySelectorAll(".ivy.left, .ivy.right").forEach(el => el.style.backgroundImage = toUrl(ivyVert));
+
+  /* ---------- Twinkling lights around the frame ---------- */
+  const lightColors = ["#ff3b3b", "#ffd23b", "#3bff6e", "#3bb4ff", "#ff6bd6"];
+  function drawLights() {
+    const frame = document.getElementById("frame");
+    const lights = document.getElementById("lights");
+    lights.innerHTML = "";
+    const w = frame.offsetWidth, h = frame.offsetHeight;
+    const inset = w < 600 ? 18 : 22, gap = 44;
+    const points = [];
+    for (let x = inset; x <= w - inset; x += gap) { points.push([x, inset]); points.push([x, h - inset]); }
+    for (let y = inset + gap; y < h - inset; y += gap) { points.push([inset, y]); points.push([w - inset, y]); }
+    points.forEach(([x, y], i) => {
+      const b = document.createElement("span");
+      const c = lightColors[i % lightColors.length];
+      b.className = "bulb";
+      b.style.left = x + "px";
+      b.style.top = y + "px";
+      b.style.background = c;
+      b.style.boxShadow = `0 0 10px 3px ${c}`;
+      b.style.animationDelay = (Math.random() * 1.6).toFixed(2) + "s";
+      lights.appendChild(b);
+    });
+  }
+  drawLights();
+  window.addEventListener("resize", drawLights);
+  panel.addEventListener("transitionend", drawLights);
+
+  /* ---------- Snow ---------- */
+  const snow = document.getElementById("snow");
+  for (let i = 0; i < 45; i++) {
+    const f = document.createElement("span");
+    f.className = "flake";
+    f.textContent = Math.random() > .5 ? "❄" : "•";
+    f.style.left = Math.random() * 100 + "vw";
+    f.style.fontSize = (8 + Math.random() * 14) + "px";
+    f.style.animationDuration = (6 + Math.random() * 10) + "s";
+    f.style.animationDelay = (-Math.random() * 15) + "s";
+    snow.appendChild(f);
+  }
+</script>
+</body>
+</html>
